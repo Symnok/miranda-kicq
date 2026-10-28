@@ -32,8 +32,17 @@ void WhatsAppProto::OnAccountSync(const WANode &node)
 
 void WhatsAppProto::OnIqBlockList(const WANode &node)
 {
+	auto *list = node.getChild("list");
+	bool bLidMode = !mir_strcmp(list->getAttr("addressing_mode"), "lid");
+
 	for (auto &it : node.getChild("list")->getChildren()) {
-		auto *pUser = AddUser(it->getAttr("jid"), false);
+		WAUser *pUser;
+		if (bLidMode) {
+			pUser = AddUser(it->getAttr("pn_jid"), false);
+			if (auto *pszLid = it->getAttr("lid"))
+				SetLid(pUser, pszLid);
+		}
+		else pUser = AddUser(it->getAttr("jid"), false);
 		Contact::Hide(pUser->hContact);
 	}
 }
@@ -329,6 +338,7 @@ void WhatsAppProto::OnNotifyDevices(const WANode &node)
 {
 	if (!mir_strcmp(node.getAttr("jid"), m_szJid))
 		debugLogA("received list of my own devices");
+
 	SendAck(node);
 }
 
@@ -338,6 +348,7 @@ void WhatsAppProto::OnNotifyEncrypt(const WANode &node)
 {
 	if (!mir_strcmp(node.getAttr("from"), S_WHATSAPP_NET))
 		OnIqCountPrekeys(node);
+
 	SendAck(node);
 }
 
@@ -360,6 +371,8 @@ void WhatsAppProto::OnNotifyStatus(const WANode &node)
 	if (auto *pUser = FindUser(node.getAttr("from")))
 		if (auto *pSet = node.getChild("set"))
 			setUString(pUser->hContact, "StatusMsg", pSet->getBody());
+
+	SendAck(node);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
