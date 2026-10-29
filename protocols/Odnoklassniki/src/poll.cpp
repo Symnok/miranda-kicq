@@ -122,8 +122,10 @@ bool COdnoklassnikiProto::Login()
 	if (!szServer.IsEmpty())
 		m_szApiServer = szServer;
 	CMStringA szUid(reply.root["uid"].as_string().c_str());
-	if (!szUid.IsEmpty())
+	if (!szUid.IsEmpty()) {
 		m_szMyUid = szUid;
+		setString(DB_KEY_ID, szUid); // shown for our own messages until our name is known
+	}
 
 	if (m_szSessionKey.IsEmpty() || m_szSessionSecret.IsEmpty()) {
 		debugLogA("login returned no session");
