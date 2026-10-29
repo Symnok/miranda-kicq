@@ -213,13 +213,17 @@ void COdnoklassnikiProto::ResolveUsers(const std::vector<CMStringA> &uids)
 				m_names[uid] = wszName;
 			}
 
-			MCONTACT hContact = FindUser(uid);
-			if (hContact == 0)
+			// our own name goes to the account itself: it labels the messages we send
+			bool bMe = (uid == m_szMyUid);
+			MCONTACT hContact = bMe ? 0 : FindUser(uid);
+			if (hContact == 0 && !bMe)
 				continue;
 
 			setWString(hContact, "Nick", wszName);
 			setWString(hContact, "FirstName", wszFirst);
 			setWString(hContact, "LastName", wszLast);
+			if (bMe)
+				continue;
 
 			// "online" is absent or OFFLINE when away, else the kind of device (WEB, MOBILE...)
 			CMStringA szOnline(it["online"].as_string().c_str());
@@ -248,6 +252,8 @@ void COdnoklassnikiProto::LoadFriends()
 		AddUser(uid, false);
 	}
 	debugLogA("%d friends", (int)uids.size());
+	if (!m_szMyUid.IsEmpty())
+		uids.push_back(m_szMyUid);
 	ResolveUsers(uids);
 }
 
