@@ -18,8 +18,11 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 #pragma once
 
 #include <windows.h>
+#include <io.h>
+#include <sys/stat.h>
 #include <time.h>
 
+#include <algorithm>
 #include <map>
 #include <set>
 #include <string>

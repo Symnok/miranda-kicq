@@ -73,6 +73,7 @@ void CKicqProto::ServerThread(void *)
 
 	debugLogA("session finished");
 	m_bOnline = false;
+	FtDropPending();
 
 	int iOldStatus = m_iStatus;
 	m_iStatus = m_iDesiredStatus = ID_STATUS_OFFLINE;
@@ -790,10 +791,14 @@ void CKicqProto::HandleIncomingMessage(const bytes_t &data)
 
 		OscarReader m(t5->data);
 		int msgType = m.u16();
-		m.skip(8);                          // cookie again
+		bytes_t fileCookie = m.bytes(8);        // cookie again: the one that survives kicq.ru's rewriting
 		CMStringA guid(OscarText::hex(m.bytes(16)));
-		if (guid == CAP_FILE || msgType != 0)
-			return;                          // file transfer, or cancel/accept of a rendezvous
+		if (guid == CAP_FILE) {
+			HandleFileRendezvous(uin, msgType, fileCookie, m);
+			return;
+		}
+		if (msgType != 0)
+			return;                          // cancel/accept of a rendezvous
 
 		OscarTlvList inner(m);
 		auto *ext = inner.find(0x2711);
@@ -916,11 +921,13 @@ void CKicqProto::HandleMessageAck(const bytes_t &data)
 			ProtoBroadcastAck(hContact, ACKTYPE_MESSAGE, ACKRESULT_SUCCESS, (HANDLE)seq, 0);
 }
 
-// errors answer the request id they refer to: our keep-alive probe (error 9, by design),
+// errors answer the request id they refer to: a file offer of ours,
 // an ack we sent for a stranger's message (error 14), or a message of ours
 void CKicqProto::HandleMessageError(const bytes_t &data, uint32_t reqId)
 {
 	int code = OscarReader(data).u16();
+	if (FtOfferRefused(reqId, code))
+		return;
 
 	KicqPendingMsg msg;
 	{

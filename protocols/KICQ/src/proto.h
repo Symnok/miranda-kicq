@@ -19,6 +19,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 #define KICQ_DEFAULT_SERVER "195.66.114.37"
 #define KICQ_DEFAULT_PORT 5190
+#define KICQ_DEFAULT_FILE_PROXY "ars.mandarin.im"
+#define KICQ_DEFAULT_FILE_PROXY_PORT 5191
 
 // what the session knows about a server-side group
 struct KicqGroup
@@ -58,6 +60,31 @@ struct KicqInfoRequest
 	CMStringW nick, firstName, lastName, email;
 };
 
+// one file transfer, from the offer to the end; a thread owns it once bStarted is set
+struct KicqTransfer
+{
+	MCONTACT hContact = 0;
+	uint32_t uin = 0;
+	bytes_t cookie;
+	bool bSending = false;
+	bool bStarted = false;              // false: an incoming offer waiting for the user
+	volatile bool bCancelled = false, bDenied = false;
+	volatile bool bRedirect = false;    // the peer has named another place to meet
+	HNETLIBCONN hConn = nullptr;
+	uint32_t reqId = 0;                 // of our offer
+
+	CMStringW wszName, wszDescr;
+	uint32_t totalSize = 0;
+	int fileCount = 0;
+	std::vector<CMStringW> files;       // sending: full paths
+	CMStringW wszSavePath;              // receiving
+
+	// where the peer waits for us
+	bool bPeerProxy = false;
+	uint32_t ip = 0;
+	int port = 0;
+};
+
 class CKicqProto : public PROTO<CKicqProto>
 {
 	friend class CKicqAccountDlg;
@@ -93,6 +120,7 @@ class CKicqProto : public PROTO<CKicqProto>
 	void HandleIncomingMessage(const bytes_t &data);
 	void HandleOfflineMessage(const bytes_t &data);
 	void HandleUserInfo(const bytes_t &data, uint32_t reqId);
+	void HandleFileRendezvous(uint32_t uin, int msgType, const bytes_t &cookie, OscarReader &r);
 	void HandleMessageAck(const bytes_t &data);
 	void HandleMessageError(const bytes_t &data, uint32_t reqId);
 	void HandleTyping(const bytes_t &data);
@@ -143,6 +171,35 @@ class CKicqProto : public PROTO<CKicqProto>
 
 	uint32_t RequestUserInfo(uint32_t uin, MCONTACT hContact, HANDLE hSearch);
 
+	// file transfer
+	mir_cs m_csTransfers;
+	std::vector<KicqTransfer*> m_arTransfers;
+
+	KicqTransfer* FtFind(const bytes_t &cookie);
+	bool FtExists(KicqTransfer *t);
+	void FtRemove(KicqTransfer *t);
+	void FtInterrupt(KicqTransfer *t);
+	void FtDropPending();
+	void FtCancelAll();
+	bool FtOfferRefused(uint32_t reqId, int code);
+
+	bool FtConnect(KicqTransfer *t, const char *host, int port, int timeout);
+	void FtDisconnect(KicqTransfer *t);
+	bool FtWrite(KicqTransfer *t, const void *data, int len);
+	bool FtRead(KicqTransfer *t, void *data, int len, int timeout);
+	bool FtProxySend(KicqTransfer *t, const bytes_t &packet);
+	int  FtProxyRead(KicqTransfer *t, bytes_t &body, int timeout);
+	bool FtAllocate(KicqTransfer *t, uint32_t &ip, int &port);
+	bool FtJoin(KicqTransfer *t);
+	bool FtReadOft(KicqTransfer *t, bytes_t &hdr, int wanted);
+
+	void __cdecl SendFileThread(void *param);
+	bool FtSendFiles(KicqTransfer *t);
+	bool FtSendOne(KicqTransfer *t, int idx, PROTOFILETRANSFERSTATUS &fts);
+	void __cdecl RecvFileThread(void *param);
+	bool FtRecvFiles(KicqTransfer *t);
+	bool FtRecvOne(KicqTransfer *t, int idx, const CMStringW &wszDir, bytes_t &hdr, PROTOFILETRANSFERSTATUS &fts);
+
 	// status
 	int MirandaToIcqStatus(int iStatus);
 	int IcqToMirandaStatus(int iIcqStatus);
@@ -161,6 +218,8 @@ public:
 	CMOption<wchar_t*> m_wszServer;
 	CMOption<int> m_iPort;
 	CMOption<wchar_t*> m_wszDefaultGroup;
+	CMOption<wchar_t*> m_wszFileProxy;
+	CMOption<int> m_iFileProxyPort;
 
 	//////////////////////////////////////////////////////////////////////////////////////
 	// PROTO_INTERFACE
@@ -173,10 +232,16 @@ public:
 	int      AuthRecv(MCONTACT, DB::EventInfo &dbei) override;
 	int      AuthRequest(MCONTACT hContact, const wchar_t *szMessage) override;
 
+	HANDLE   FileAllow(MCONTACT hContact, HANDLE hTransfer, const wchar_t *szPath) override;
+	int      FileCancel(MCONTACT hContact, HANDLE hTransfer) override;
+	int      FileDeny(MCONTACT hContact, HANDLE hTransfer, const wchar_t *szReason) override;
+
 	INT_PTR  GetCaps(int type, MCONTACT hContact = 0) override;
 	int      GetInfo(MCONTACT hContact, int infoType) override;
 
 	HANDLE   SearchBasic(const wchar_t *id) override;
+
+	HANDLE   SendFile(MCONTACT hContact, const wchar_t *szDescription, wchar_t **ppszFiles) override;
 
 	int      SendMsg(MCONTACT hContact, MEVENT hReplyEvent, const char *msg) override;
 

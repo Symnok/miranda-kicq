@@ -229,9 +229,20 @@ namespace OscarPackets
 	OscarSnac messageChannel2(const char *receiver, const wchar_t *text, bool utf8, const bytes_t &cookie, uint32_t reqId);
 	OscarSnac messageAck(const bytes_t &cookie, const char *receiver);
 	OscarSnac typingNotify(const char *uin, int type);
-	// Jasmine's keep-alive: a deliberately malformed ICBM that the server always answers
-	// with an error, which proves the link is alive
+	// keep-alive: a request for our own info (01/0E), answered with 01/0F, which proves the link
+	// is alive. Jasmine's malformed ICBM probe makes mandarin.im and logon.chat drop the connection
 	OscarSnac keepAliveProbe();
+
+	// file transfer: the rendezvous ICBMs
+	OscarSnac fileOffer(const char *receiver, const bytes_t &cookie, uint32_t ip, int port, const char *name, int count, uint32_t size, const char *descr, uint32_t reqId);
+	OscarSnac fileRedirect(const char *receiver, const bytes_t &cookie, uint32_t ip, int port);
+	OscarSnac fileAccept(const char *receiver, const bytes_t &cookie);
+	OscarSnac fileCancel(const char *receiver, const bytes_t &cookie);
+
+	// file transfer: the handshake with the ARS proxy and the OFT2 header
+	bytes_t proxyAllocate(const char *uin, const bytes_t &cookie);
+	bytes_t proxyJoin(const char *uin, int port, const bytes_t &cookie);
+	bytes_t oftPrompt(const bytes_t &cookie, int totalFiles, int filesLeft, uint32_t totalSize, uint32_t size, uint32_t checksum, const wchar_t *name);
 
 	// roster (SSI, family 0x13)
 	OscarSnac ssiEditStart();

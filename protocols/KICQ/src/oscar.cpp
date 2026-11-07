@@ -315,6 +315,7 @@ OscarSnac setUserInfo(int major, int minor, int patch)
 	caps.bytes(unhex(CAP_UTF8));
 	caps.bytes(unhex("563FC8090B6F41BD9F79422609DFA2F3"));
 	caps.bytes(unhex("0946134D4C7F11D18222444553540000"));   // typing notifications
+	caps.bytes(unhex(CAP_FILE));
 	OscarWriter w;
 	w.tlv(5, caps);
 	return OscarSnac(2, 4, 4, w.data());
@@ -457,9 +458,130 @@ OscarSnac typingNotify(const char *uin, int type)
 
 OscarSnac keepAliveProbe()
 {
+	return OscarSnac(1, 0x0E, 0x0E);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// file transfer
+
+static OscarWriter rendezvousHeader(int type, const bytes_t &cookie)
+{
 	OscarWriter w;
-	w.u8(9);
-	return OscarSnac(4, 6, 0x0F, w.data());
+	w.u16(type).bytes(cookie).bytes(unhex(CAP_FILE));
+	return w;
+}
+
+static OscarSnac rendezvousSnac(const char *receiver, const bytes_t &cookie, const OscarWriter &tlv5, bool bAck, uint32_t reqId)
+{
+	OscarWriter w;
+	w.bytes(cookie).u16(2).ascii8(receiver).tlv(5, tlv5);
+	if (bAck)
+		w.tlv(3, bytes_t());
+	return OscarSnac(4, 6, reqId, w.data());
+}
+
+// the address in the offer comes along with its inverted copy
+static void rendezvousIp(OscarWriter &w, uint32_t ip)
+{
+	w.tlvU32(2, ip).tlvU32(0x16, ~ip);
+}
+
+static void rendezvousPort(OscarWriter &w, int port)
+{
+	w.tlv(5, OscarWriter().u16(port)).tlv(0x17, OscarWriter().u16(~port & 0xFFFF));
+}
+
+OscarSnac fileOffer(const char *receiver, const bytes_t &cookie, uint32_t ip, int port, const char *name, int count, uint32_t size, const char *descr, uint32_t reqId)
+{
+	OscarWriter w(rendezvousHeader(0, cookie));
+	w.tlv(10, OscarWriter().u16(1)).tlv(0x0F, bytes_t());
+	rendezvousIp(w, ip);
+	w.tlvU32(3, ip);
+	rendezvousPort(w, port);
+	w.tlv(0x10, bytes_t());
+	if (descr && *descr)
+		w.tlvAscii(0x0D, "utf-8").tlvAscii(0x0C, descr);
+
+	OscarWriter info;
+	info.u16(count > 1 ? 2 : 1).u16(count).u32(size).ascii(name).u8(0);
+	w.tlv(0x2711, info).tlvAscii(0x2712, "utf-8");
+	return rendezvousSnac(receiver, cookie, w, false, reqId);
+}
+
+OscarSnac fileRedirect(const char *receiver, const bytes_t &cookie, uint32_t ip, int port)
+{
+	OscarWriter w(rendezvousHeader(0, cookie));
+	w.tlv(10, OscarWriter().u16(2));
+	rendezvousIp(w, ip);
+	rendezvousPort(w, port);
+	w.tlv(0x10, bytes_t());
+	return rendezvousSnac(receiver, cookie, w, false, 6);
+}
+
+OscarSnac fileAccept(const char *receiver, const bytes_t &cookie)
+{
+	return rendezvousSnac(receiver, cookie, rendezvousHeader(2, cookie), true, 6);
+}
+
+OscarSnac fileCancel(const char *receiver, const bytes_t &cookie)
+{
+	return rendezvousSnac(receiver, cookie, rendezvousHeader(1, cookie), true, 6);
+}
+
+static bytes_t proxyPacket(int cmd, const OscarWriter &payload)
+{
+	OscarWriter body;
+	body.u16(0x044A).u16(cmd).u32(0).u16(0).bytes(payload.data());
+	OscarWriter w;
+	w.u16(body.size()).bytes(body.data());
+	return w.data();
+}
+
+bytes_t proxyAllocate(const char *uin, const bytes_t &cookie)
+{
+	OscarWriter w;
+	w.ascii8(uin).bytes(cookie).tlv(1, unhex(CAP_FILE));
+	return proxyPacket(2, w);
+}
+
+bytes_t proxyJoin(const char *uin, int port, const bytes_t &cookie)
+{
+	OscarWriter w;
+	w.ascii8(uin).u16(port).bytes(cookie).tlv(1, unhex(CAP_FILE));
+	return proxyPacket(4, w);
+}
+
+bytes_t oftPrompt(const bytes_t &cookie, int totalFiles, int filesLeft, uint32_t totalSize, uint32_t size, uint32_t checksum, const wchar_t *name)
+{
+	bool bAscii = true;
+	for (auto *p = name; *p; p++)
+		if (*p >= 0x80)
+			bAscii = false;
+
+	bytes_t rawName = bAscii ? OscarText::toCp1251(name) : OscarText::toUcs2(name);
+	// zero terminated, at least 64 bytes; a longer name makes the whole header longer
+	rawName.append(bAscii ? 1 : 2, '\0');
+	if (rawName.size() < 64)
+		rawName.resize(64);
+
+	OscarWriter id;
+	id.ascii("Cool FileXfer");
+	bytes_t idString(id.data());
+	idString.resize(32);
+
+	OscarWriter w;
+	w.u16(0x0101).bytes(cookie).u16(0).u16(0);    // type, cookie, encryption, compression
+	w.u16(totalFiles).u16(filesLeft).u16(1).u16(1);
+	w.u32(totalSize).u32(size).u32(0).u32(checksum);
+	w.u32(0xFFFF0000).u32(0).u32(0).u32(0xFFFF0000); // resource fork
+	w.u32(0).u32(0xFFFF0000);                     // received so far and its checksum
+	w.bytes(idString).u8(0x20).u8(0x1C).u8(0x11);
+	w.bytes(bytes_t(69 + 16, '\0'));               // dummy, Mac file info
+	w.u16(bAscii ? 0 : 2).u16(0).bytes(rawName);
+
+	OscarWriter res;
+	res.ascii("OFT2").u16(w.size() + 6).bytes(w.data());
+	return res.data();
 }
 
 OscarSnac ssiEditStart() { return OscarSnac(0x13, 0x11, 0x11); }

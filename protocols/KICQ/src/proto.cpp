@@ -28,7 +28,9 @@ CKicqProto::CKicqProto(const char *szModuleName, const wchar_t *wszUserName) :
 	m_arGroups(10),
 	m_wszServer(this, "Server", _A2W(KICQ_DEFAULT_SERVER)),
 	m_iPort(this, "Port", KICQ_DEFAULT_PORT),
-	m_wszDefaultGroup(this, "DefaultGroup", L"General")
+	m_wszDefaultGroup(this, "DefaultGroup", L"General"),
+	m_wszFileProxy(this, "FileProxy", _A2W(KICQ_DEFAULT_FILE_PROXY)),
+	m_iFileProxyPort(this, "FileProxyPort", KICQ_DEFAULT_FILE_PROXY_PORT)
 {
 	NETLIBUSER nlu = {};
 	nlu.flags = NUF_OUTGOING | NUF_UNICODE;
@@ -54,6 +56,7 @@ void CKicqProto::OnShutdown()
 {
 	m_bTerminated = true;
 	ShutdownSession();
+	FtCancelAll();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -260,7 +263,7 @@ INT_PTR CKicqProto::GetCaps(int type, MCONTACT)
 {
 	switch (type) {
 	case PFLAGNUM_1:
-		return PF1_IM | PF1_SERVERCLIST | PF1_AUTHREQ | PF1_BASICSEARCH | PF1_ADDSEARCHRES | PF1_MODEMSGRECV | PF1_MODEMSGSEND | PF1_NUMERICUSERID;
+		return PF1_IM | PF1_FILE | PF1_SERVERCLIST | PF1_AUTHREQ | PF1_BASICSEARCH | PF1_ADDSEARCHRES | PF1_MODEMSGRECV | PF1_MODEMSGSEND | PF1_NUMERICUSERID;
 
 	case PFLAGNUM_2:
 		return PF2_ONLINE | PF2_SHORTAWAY | PF2_LONGAWAY | PF2_LIGHTDND | PF2_HEAVYDND | PF2_FREECHAT | PF2_INVISIBLE;

@@ -3,6 +3,7 @@
   <Import Project="$(ProjectDir)..\..\build\vc.common\common.filters" />
   <ItemGroup>
     <ClCompile Include="src\main.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\files.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="src\options.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="src\oscar.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="src\proto.cpp"><Filter>Source Files</Filter></ClCompile>

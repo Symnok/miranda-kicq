@@ -19,7 +19,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 class CKicqAccountDlg : public CKicqDlgBase
 {
-	CCtrlEdit edtUin, edtPassword, edtServer, edtPort, edtGroup;
+	CCtrlEdit edtUin, edtPassword, edtServer, edtPort, edtGroup, edtFileProxy, edtFileProxyPort;
 
 public:
 	CKicqAccountDlg(CKicqProto *ppro, int iDlgId) :
@@ -28,13 +28,17 @@ public:
 		edtPassword(this, IDC_PASSWORD),
 		edtServer(this, IDC_SERVER),
 		edtPort(this, IDC_PORT),
-		edtGroup(this, IDC_GROUP)
+		edtGroup(this, IDC_GROUP),
+		edtFileProxy(this, IDC_FILEPROXY),
+		edtFileProxyPort(this, IDC_FILEPROXY_PORT)
 	{
 		CreateLink(edtUin, "UIN", DBVT_DWORD, 0);
 		CreateLink(edtPassword, "Password", L"");
 		CreateLink(edtServer, ppro->m_wszServer);
 		CreateLink(edtPort, ppro->m_iPort);
 		CreateLink(edtGroup, ppro->m_wszDefaultGroup);
+		CreateLink(edtFileProxy, ppro->m_wszFileProxy);
+		CreateLink(edtFileProxyPort, ppro->m_iFileProxyPort);
 	}
 
 	bool OnInitDialog() override
