@@ -19,8 +19,21 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 #define KICQ_DEFAULT_SERVER "195.66.114.37"
 #define KICQ_DEFAULT_PORT 5190
-#define KICQ_DEFAULT_FILE_PROXY "ars.mandarin.im"
 #define KICQ_DEFAULT_FILE_PROXY_PORT 5191
+
+// the known OSCAR services; the last one, with no server, stands for "any other"
+struct KicqService
+{
+	const char *key;
+	const wchar_t *name;
+	const char *server;
+	int port;
+	const char *fileProxy;   // "" when the service has none: files can be received, not sent
+	int fileProxyPort;
+};
+
+extern const KicqService g_services[];
+extern const int g_serviceCount;
 
 // what the session knows about a server-side group
 struct KicqGroup
@@ -94,6 +107,7 @@ class CKicqProto : public PROTO<CKicqProto>
 	mir_cs m_csSend;
 	int m_seq = 1;
 	bool m_bOnline = false, m_bTerminated = false;
+	bool m_bFamiliesSent = false;  // 01/17 went out on this connection
 	bool m_bProbeAnswered = true;
 	time_t m_lastProbe = 0;
 	bytes_t m_cookie;
@@ -220,6 +234,13 @@ public:
 	CMOption<wchar_t*> m_wszDefaultGroup;
 	CMOption<wchar_t*> m_wszFileProxy;
 	CMOption<int> m_iFileProxyPort;
+
+	/// The key of g_services this account uses: stored, or recognised by the server.
+	CMStringA ServiceKey();
+	/// kicq.ru, whose offline store mangles text unless it is written the way SendMsg does.
+	bool IsKicqRu();
+	/// The ARS proxy for files; empty when there is none.
+	CMStringA FileProxyHost();
 
 	//////////////////////////////////////////////////////////////////////////////////////
 	// PROTO_INTERFACE

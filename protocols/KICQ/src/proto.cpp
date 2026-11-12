@@ -29,7 +29,7 @@ CKicqProto::CKicqProto(const char *szModuleName, const wchar_t *wszUserName) :
 	m_wszServer(this, "Server", _A2W(KICQ_DEFAULT_SERVER)),
 	m_iPort(this, "Port", KICQ_DEFAULT_PORT),
 	m_wszDefaultGroup(this, "DefaultGroup", L"General"),
-	m_wszFileProxy(this, "FileProxy", _A2W(KICQ_DEFAULT_FILE_PROXY)),
+	m_wszFileProxy(this, "FileProxy", L""),
 	m_iFileProxyPort(this, "FileProxyPort", KICQ_DEFAULT_FILE_PROXY_PORT)
 {
 	NETLIBUSER nlu = {};
@@ -57,6 +57,58 @@ void CKicqProto::OnShutdown()
 	m_bTerminated = true;
 	ShutdownSession();
 	FtCancelAll();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// services
+
+const KicqService g_services[] =
+{
+	{ "kicq",     LPGENW("KICQ (kicq.ru)"),     "kicq.ru",               5190, "",                5191 },
+	{ "mandarin", LPGENW("Mandarin IM"),        "oscar.mandarin.im",     5190, "ars.mandarin.im", 5191 },
+	{ "logon",    LPGENW("logon.chat"),         "logon.chat",            5190, "",                5191 },
+	{ "nina",     LPGENW("NINA (nina.chat)"),   "login.oscar.nina.chat", 5190, "",                5191 },
+	{ "custom",   LPGENW("Other server"),       "",                      5190, "",                5191 },
+};
+const int g_serviceCount = _countof(g_services);
+
+static bool sameHost(const char *a, const char *b)
+{
+	return !mir_strcmpi(a, b);
+}
+
+CMStringA CKicqProto::ServiceKey()
+{
+	CMStringA szKey(getMStringA("Service"));
+	if (!szKey.IsEmpty())
+		return szKey;
+
+	// accounts made before the presets are recognised by their server
+	T2Utf szServer(m_wszServer);
+	if (sameHost(szServer, KICQ_DEFAULT_SERVER))
+		return "kicq";
+	for (int i = 0; i < g_serviceCount - 1; i++)
+		if (sameHost(szServer, g_services[i].server))
+			return g_services[i].key;
+	if (sameHost(szServer, "mandarin.im"))
+		return "mandarin";
+	return "custom";
+}
+
+bool CKicqProto::IsKicqRu()
+{
+	T2Utf szServer(m_wszServer);
+	return sameHost(szServer, "kicq.ru") || sameHost(szServer, KICQ_DEFAULT_SERVER);
+}
+
+CMStringA CKicqProto::FileProxyHost()
+{
+	CMStringA szProxy(T2Utf(m_wszFileProxy).get());
+	szProxy.Trim();
+	// a Mandarin account set up while the proxy was everyone's default has none stored
+	if (szProxy.IsEmpty() && getMStringA("Service").IsEmpty() && ServiceKey() == "mandarin")
+		szProxy = "ars.mandarin.im";
+	return szProxy;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -263,7 +315,7 @@ INT_PTR CKicqProto::GetCaps(int type, MCONTACT)
 {
 	switch (type) {
 	case PFLAGNUM_1:
-		return PF1_IM | PF1_FILE | PF1_SERVERCLIST | PF1_AUTHREQ | PF1_BASICSEARCH | PF1_ADDSEARCHRES | PF1_MODEMSGRECV | PF1_MODEMSGSEND | PF1_NUMERICUSERID;
+		return PF1_IM | PF1_FILERECV | (FileProxyHost().IsEmpty() ? 0 : PF1_FILESEND) | PF1_SERVERCLIST | PF1_AUTHREQ | PF1_BASICSEARCH | PF1_ADDSEARCHRES | PF1_MODEMSGRECV | PF1_MODEMSGSEND | PF1_NUMERICUSERID;
 
 	case PFLAGNUM_2:
 		return PF2_ONLINE | PF2_SHORTAWAY | PF2_LONGAWAY | PF2_LIGHTDND | PF2_HEAVYDND | PF2_FREECHAT | PF2_INVISIBLE;
@@ -327,7 +379,7 @@ int CKicqProto::SendMsg(MCONTACT hContact, MEVENT, const char *pszSrc)
 
 	if (bRelay)
 		Send(OscarPackets::messageChannel2(szUin, text, bUtf8, cookie, reqId));
-	else if (!bOnline) {
+	else if (!bOnline && IsKicqRu()) {
 		// kicq.ru's offline store keeps only bytes 0x01-0x7F and stops at the first 0x00:
 		// ASCII text survives as charset 0, anything else only as UCS-2 where only characters
 		// >= U+0100 get through. Spaces become EN SPACE (U+2002) so that whole Cyrillic

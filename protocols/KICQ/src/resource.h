@@ -12,6 +12,7 @@
 #define IDC_GROUP                       1005
 #define IDC_FILEPROXY                   1006
 #define IDC_FILEPROXY_PORT              1007
+#define IDC_SERVICE                     1008
 
 // Next default values for new objects
 //

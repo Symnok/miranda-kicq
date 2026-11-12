@@ -96,6 +96,7 @@ bool CLogonChatProto::RunConnection(const char *host, int port, bool bLogin)
 		mir_cslock lck(m_csSend);
 		m_hConn = hConn;
 		m_seq = (rand() & 0x7FFF) + 1;
+		m_bFamiliesSent = false;
 	}
 
 	ConnResult res = CONN_CLOSE;
@@ -315,7 +316,14 @@ void CLogonChatProto::HandleSnac(const bytes_t &data)
 	switch (family) {
 	case 0x01:
 		switch (subtype) {
-		case 0x03: case 0x15: Send(OscarPackets::clientFamilies()); break;
+		// the families go out once: nina.chat follows 01/03 with 01/15 (its support links) and
+		// drops a client that answers that with a second 01/17
+		case 0x03: case 0x15:
+			if (!m_bFamiliesSent) {
+				m_bFamiliesSent = true;
+				Send(OscarPackets::clientFamilies());
+			}
+			break;
 		case 0x18: Send(OscarPackets::ratesRequest()); break;
 		case 0x07: HandleRates(body); break;
 		}

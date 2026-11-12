@@ -20,6 +20,34 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 class CKicqAccountDlg : public CKicqDlgBase
 {
 	CCtrlEdit edtUin, edtPassword, edtServer, edtPort, edtGroup, edtFileProxy, edtFileProxyPort;
+	CCtrlCombo cmbService;
+
+	// A preset fills the connection fields in and locks them; "Other server" leaves them to the user.
+	void ShowService(bool bFill)
+	{
+		int idx = cmbService.GetCurSel();
+		if (idx < 0 || idx >= g_serviceCount)
+			return;
+
+		const KicqService &s = g_services[idx];
+		bool bCustom = s.server[0] == 0;
+		if (!bCustom && bFill) {
+			edtServer.SetTextA(s.server);
+			edtPort.SetInt(s.port);
+			edtFileProxy.SetTextA(s.fileProxy);
+			edtFileProxyPort.SetInt(s.fileProxyPort);
+		}
+		edtServer.Enable(bCustom);
+		edtPort.Enable(bCustom);
+		edtFileProxy.Enable(bCustom);
+		edtFileProxyPort.Enable(bCustom);
+	}
+
+	void onSelChange_Service(CCtrlCombo *)
+	{
+		ShowService(true);
+		NotifyChange();
+	}
 
 public:
 	CKicqAccountDlg(CKicqProto *ppro, int iDlgId) :
@@ -30,8 +58,10 @@ public:
 		edtPort(this, IDC_PORT),
 		edtGroup(this, IDC_GROUP),
 		edtFileProxy(this, IDC_FILEPROXY),
-		edtFileProxyPort(this, IDC_FILEPROXY_PORT)
+		edtFileProxyPort(this, IDC_FILEPROXY_PORT),
+		cmbService(this, IDC_SERVICE)
 	{
+		cmbService.OnSelChanged = Callback(this, &CKicqAccountDlg::onSelChange_Service);
 		CreateLink(edtUin, "UIN", DBVT_DWORD, 0);
 		CreateLink(edtPassword, "Password", L"");
 		CreateLink(edtServer, ppro->m_wszServer);
@@ -46,6 +76,33 @@ public:
 		// the XOR login of that ICQ era only uses the first 8 characters
 		edtPassword.SendMsg(EM_LIMITTEXT, 8, 0);
 		edtUin.SendMsg(EM_LIMITTEXT, 10, 0);
+
+		CMStringA szKey(m_proto->ServiceKey());
+		for (int i = 0; i < g_serviceCount; i++) {
+			cmbService.AddString(TranslateW(g_services[i].name), i);
+			if (szKey == g_services[i].key)
+				cmbService.SetCurSel(i);
+		}
+		if (cmbService.GetCurSel() < 0)
+			cmbService.SetCurSel(g_serviceCount - 1);
+		ShowService(true);
+		return true;
+	}
+
+	bool OnApply() override
+	{
+		int idx = cmbService.GetCurSel();
+		if (idx < 0 || idx >= g_serviceCount)
+			return true;
+
+		const KicqService &s = g_services[idx];
+		m_proto->setString("Service", s.key);
+		if (s.server[0]) {
+			m_proto->m_wszServer = _A2T(s.server);
+			m_proto->m_iPort = s.port;
+			m_proto->m_wszFileProxy = _A2T(s.fileProxy);
+			m_proto->m_iFileProxyPort = s.fileProxyPort;
+		}
 		return true;
 	}
 };

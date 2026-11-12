@@ -67,6 +67,7 @@ class CLogonChatProto : public PROTO<CLogonChatProto>
 	mir_cs m_csSend;
 	int m_seq = 1;
 	bool m_bOnline = false, m_bTerminated = false;
+	bool m_bFamiliesSent = false;  // 01/17 went out on this connection
 	bool m_bProbeAnswered = true;
 	time_t m_lastProbe = 0;
 	bytes_t m_cookie;

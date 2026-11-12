@@ -291,7 +291,11 @@ int CKicqProto::FtProxyRead(KicqTransfer *t, bytes_t &body, int timeout)
 
 bool CKicqProto::FtAllocate(KicqTransfer *t, uint32_t &ip, int &port)
 {
-	T2Utf szProxy(m_wszFileProxy);
+	CMStringA szProxy(FileProxyHost());
+	if (szProxy.IsEmpty()) {
+		debugLogA("file transfer: no proxy of our own");
+		return false;
+	}
 	if (!FtConnect(t, szProxy, m_iFileProxyPort, 20))
 		return false;
 	if (!FtProxySend(t, OscarPackets::proxyAllocate(m_szUin, t->cookie)))
@@ -328,7 +332,8 @@ bool CKicqProto::FtJoin(KicqTransfer *t)
 	// mere ticket and listened elsewhere, hence the proxy of the options as the second chance
 	if (t->ip != 0 && tryProxy(szHost, t->port))
 		return true;
-	return tryProxy(T2Utf(m_wszFileProxy), m_iFileProxyPort);
+	CMStringA szOwn(FileProxyHost());
+	return !szOwn.IsEmpty() && tryProxy(szOwn, m_iFileProxyPort);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -485,7 +490,7 @@ bool CKicqProto::FtReadOft(KicqTransfer *t, bytes_t &hdr, int wanted)
 HANDLE CKicqProto::SendFile(MCONTACT hContact, const wchar_t *szDescription, wchar_t **ppszFiles)
 {
 	uint32_t uin = getDword(hContact, "UIN");
-	if (!m_bOnline || uin == 0 || ppszFiles == nullptr)
+	if (!m_bOnline || uin == 0 || ppszFiles == nullptr || FileProxyHost().IsEmpty())
 		return nullptr;
 
 	auto *t = new KicqTransfer();
